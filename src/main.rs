@@ -1,15 +1,14 @@
-use std::path::Path;
-
-use client::TorrentClient;
-use torrent_file::TorrentFile;
-
 mod client;
-mod message;
 mod torrent;
 mod torrent_file;
 mod tracker;
 mod types;
 mod worker;
+
+use std::path::Path;
+
+use client::TorrentClient;
+use torrent_file::TorrentFile;
 
 #[tokio::main]
 async fn main() {

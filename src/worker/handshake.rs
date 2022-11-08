@@ -1,57 +1,12 @@
-use std::time::Duration;
-
-use anyhow::Context;
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
 
-use crate::{
-    message::{Bitfield, Message},
-    tracker::Peer,
-    types::{InfoHash, PeerID, INFO_HASH_LEN, PEER_ID_LEN},
-};
+use crate::types::{InfoHash, PeerID, INFO_HASH_LEN, PEER_ID_LEN};
 
 const PSTR: &str = "BitTorrent protocol";
 const EXTENSIONS_LEN: usize = 8;
-
-#[derive(Debug)]
-pub struct TorrentDownloadWorker {
-    stream: TcpStream,
-    choked: bool,
-    bitfield: Bitfield,
-}
-
-impl TorrentDownloadWorker {
-    pub async fn connect(
-        info_hash: &InfoHash,
-        peer_id: &PeerID,
-        peer: &Peer,
-    ) -> anyhow::Result<Self> {
-        let mut stream = tokio::time::timeout(
-            Duration::from_secs(3),
-            TcpStream::connect((peer.ip, peer.port)),
-        )
-        .await
-        .context("Connection timeout")??;
-
-        handshake(&mut stream, info_hash, peer_id).await?;
-
-        println!("Connected to {}", peer);
-
-        match Message::read(&mut stream).await? {
-            Message::Bitfield(bitfield) => Result::Ok(Self {
-                stream,
-                choked: true,
-                bitfield,
-            }),
-            msg => Result::Err(anyhow::anyhow!(
-                "Invalid message, expected bitfield, got {:?}",
-                msg
-            )),
-        }
-    }
-}
 
 struct Handshake {
     info_hash: InfoHash,
@@ -97,7 +52,7 @@ impl Handshake {
     }
 }
 
-async fn handshake(
+pub async fn handshake(
     stream: &mut TcpStream,
     info_hash: &InfoHash,
     peer_id: &PeerID,
