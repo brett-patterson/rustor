@@ -4,7 +4,7 @@ use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
 use sha1::{Digest, Sha1};
 
-use crate::types::InfoHash;
+use crate::types::{InfoHash, PieceHash, PIECE_HASH_LEN};
 
 #[derive(Debug, Deserialize)]
 pub struct TorrentFile {
@@ -15,10 +15,10 @@ pub struct TorrentFile {
 #[derive(Debug, Deserialize, Serialize)]
 pub struct TorrentFileInfo {
     pub name: String,
-    pub length: i64,
+    pub length: u64,
     pub pieces: ByteBuf,
     #[serde(rename = "piece length")]
-    pub piece_length: i64,
+    pub piece_length: u64,
 }
 
 impl TorrentFile {
@@ -33,5 +33,17 @@ impl TorrentFile {
         let mut hash = Sha1::new();
         hash.update(info_bytes);
         Result::Ok(hash.finalize().try_into()?)
+    }
+
+    pub fn piece_hashes(&self) -> anyhow::Result<Vec<PieceHash>> {
+        let n = self.info.pieces.len() / PIECE_HASH_LEN;
+        let mut hashes = vec![[0u8; PIECE_HASH_LEN]; n];
+
+        for i in 0..n {
+            hashes[i]
+                .copy_from_slice(&self.info.pieces[i * PIECE_HASH_LEN..(i + 1) * PIECE_HASH_LEN]);
+        }
+
+        Result::Ok(hashes)
     }
 }

@@ -1,11 +1,16 @@
+use std::io::SeekFrom;
+
 use rand::Rng;
+use tokio::fs::File;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 use crate::torrent::Torrent;
 use crate::torrent_file::TorrentFile;
 use crate::tracker::get_peers;
 use crate::types::{PeerID, PEER_ID_LEN};
-use crate::worker::TorrentDownloadWorker;
+use crate::worker::{PieceInfo, PieceResult, TorrentDownloadWorker};
 
 pub struct TorrentClient {
     peer_id: PeerID,
@@ -22,19 +27,55 @@ impl TorrentClient {
     pub async fn download_file(&self, torrent_file: TorrentFile) -> anyhow::Result<()> {
         let torrent = Torrent::try_from(torrent_file)?;
         let peers = get_peers(&self.peer_id, self.port, &torrent).await?;
+
+        let mut file = File::create(torrent.name).await?;
+
+        let (download_sender, download_receiver) = async_channel::unbounded::<PieceInfo>();
+        let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<PieceResult>();
+
+        // Spawn a worker to connect to each peer
         let tasks: Vec<JoinHandle<anyhow::Result<()>>> = peers
             .into_iter()
             .map(|peer| {
                 let peer_id = self.peer_id.clone();
                 let info_hash = torrent.info_hash.clone();
+                let channel = (download_sender.clone(), download_receiver.clone());
+                let results = result_sender.clone();
                 tokio::spawn(async move {
-                    let worker =
+                    let mut worker =
                         TorrentDownloadWorker::connect(&info_hash, &peer_id, &peer).await?;
-                    println!("Worker: {:?}", worker);
+                    worker.start(channel, results).await?;
                     Result::Ok(())
                 })
             })
             .collect();
+
+        // Send out each piece of the file to workers
+        for i in 0..torrent.piece_hashes.len() {
+            let begin = i as u64 * torrent.piece_length;
+            let end = u64::min((i + 1) as u64 * torrent.piece_length, torrent.length);
+            let length = end - begin;
+            let piece_info = PieceInfo::new(i as u32, torrent.piece_hashes[i], length as u32);
+            download_sender.send(piece_info).await?;
+        }
+
+        let mut bytes_written = 0u64;
+        while let Some(piece_result) = result_receiver.recv().await {
+            println!("Got piece result {}", piece_result.index);
+            let begin = piece_result.index as u64 * torrent.piece_length;
+            file.seek(SeekFrom::Start(begin)).await?;
+            file.write_all(&piece_result.buf).await?;
+            bytes_written += piece_result.buf.len() as u64;
+            println!(
+                "[{}%] Wrote piece {}",
+                bytes_written as f64 / torrent.length as f64 * 100f64,
+                piece_result.index
+            );
+
+            if bytes_written == torrent.length {
+                break;
+            }
+        }
 
         for task in tasks {
             match task.await {
