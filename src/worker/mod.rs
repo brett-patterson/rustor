@@ -8,6 +8,7 @@ use async_channel::{Receiver, Sender};
 use sha1::{Digest, Sha1};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc::UnboundedSender;
+use tracing::{info, warn};
 
 use self::handshake::handshake;
 use self::message::{Bitfield, Message};
@@ -83,7 +84,7 @@ impl TorrentDownloadWorker {
 
         handshake(&mut stream, info_hash, peer_id).await?;
 
-        println!("Connected to {}", peer);
+        info!("Connected to {}", peer);
 
         let msg = tokio::time::timeout(Duration::from_secs(5), Message::read(&mut stream))
             .await
@@ -186,7 +187,7 @@ impl TorrentDownloadWorker {
                 }
                 Message::Piece(index, begin, block) => {
                     if index != piece_info.index {
-                        println!(
+                        warn!(
                             "Received incorrect piece index: expected {}, got {}",
                             piece_info.index, index
                         );

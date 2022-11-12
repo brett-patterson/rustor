@@ -6,6 +6,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
+use tracing::{error, info, warn};
 
 use crate::torrent::Torrent;
 use crate::torrent_file::TorrentFile;
@@ -29,7 +30,7 @@ impl TorrentClient {
         let torrent = Torrent::try_from(torrent_file)?;
         let peers = get_peers(&self.peer_id, self.port, &torrent).await?;
 
-        let mut file = File::create(torrent.name).await?;
+        let mut file = File::create(&torrent.name).await?;
 
         let (download_sender, download_receiver) = async_channel::unbounded::<PieceInfo>();
         let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<PieceResult>();
@@ -68,15 +69,9 @@ impl TorrentClient {
             let begin = piece_result.index as u64 * torrent.piece_length;
             file.seek(SeekFrom::Start(begin)).await?;
             file.write_all(&piece_result.buf).await?;
+
             bytes_written += piece_result.buf.len() as u64;
             progress.set_position(bytes_written);
-            // println!(
-            //     "[{}% ({} / {})] Wrote piece {}",
-            //     bytes_written as f64 / torrent.length as f64 * 100f64,
-            //     bytes_written,
-            //     torrent.length,
-            //     piece_result.index
-            // );
 
             if bytes_written == torrent.length {
                 break;
@@ -84,7 +79,7 @@ impl TorrentClient {
         }
 
         progress.finish();
-        println!("Shutting down");
+        info!("Download finished for {}", &torrent.name);
         download_receiver.close();
 
         for task in tasks {
@@ -92,11 +87,11 @@ impl TorrentClient {
                 Ok(task_result) => match task_result {
                     Ok(_) => {}
                     Err(error) => {
-                        println!("{}", error)
+                        warn!("Error in worker: {}", error);
                     }
                 },
                 Err(error) => {
-                    println!("Failed to join task: {}", error)
+                    error!("Failed to join task: {}", error);
                 }
             }
         }
