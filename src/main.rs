@@ -11,14 +11,13 @@ use client::TorrentClient;
 use torrent_file::TorrentFile;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let client = TorrentClient::new(6881);
-    if let Some(filename) = std::env::args().skip(1).next() {
-        if let Result::Ok(torrent_file) = TorrentFile::from_file(Path::new(&filename)) {
-            match client.download_file(torrent_file).await {
-                Ok(_) => {}
-                Err(error) => println!("{:?}", error),
-            }
-        }
-    }
+    // TODO: better arg handling
+    let filename = std::env::args()
+        .skip(1)
+        .next()
+        .ok_or_else(|| anyhow::anyhow!("Invalid args"))?;
+    let torrent_file = TorrentFile::from_file(Path::new(&filename))?;
+    client.download_file(torrent_file).await
 }

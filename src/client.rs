@@ -1,5 +1,6 @@
 use std::io::SeekFrom;
 
+use indicatif::{ProgressBar, ProgressStyle};
 use rand::Rng;
 use tokio::fs::File;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
@@ -32,6 +33,9 @@ impl TorrentClient {
 
         let (download_sender, download_receiver) = async_channel::unbounded::<PieceInfo>();
         let (result_sender, mut result_receiver) = mpsc::unbounded_channel::<PieceResult>();
+        let progress = ProgressBar::new(torrent.length).with_style(ProgressStyle::with_template(
+            "[{percent}%] {wide_bar} {eta} ({bytes_per_sec})",
+        )?);
 
         // Spawn a worker to connect to each peer
         let tasks: Vec<JoinHandle<anyhow::Result<()>>> = peers
@@ -61,21 +65,27 @@ impl TorrentClient {
 
         let mut bytes_written = 0u64;
         while let Some(piece_result) = result_receiver.recv().await {
-            println!("Got piece result {}", piece_result.index);
             let begin = piece_result.index as u64 * torrent.piece_length;
             file.seek(SeekFrom::Start(begin)).await?;
             file.write_all(&piece_result.buf).await?;
             bytes_written += piece_result.buf.len() as u64;
-            println!(
-                "[{}%] Wrote piece {}",
-                bytes_written as f64 / torrent.length as f64 * 100f64,
-                piece_result.index
-            );
+            progress.set_position(bytes_written);
+            // println!(
+            //     "[{}% ({} / {})] Wrote piece {}",
+            //     bytes_written as f64 / torrent.length as f64 * 100f64,
+            //     bytes_written,
+            //     torrent.length,
+            //     piece_result.index
+            // );
 
             if bytes_written == torrent.length {
                 break;
             }
         }
+
+        progress.finish();
+        println!("Shutting down");
+        download_receiver.close();
 
         for task in tasks {
             match task.await {
