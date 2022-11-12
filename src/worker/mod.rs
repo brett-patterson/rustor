@@ -118,25 +118,12 @@ impl TorrentDownloadWorker {
                 continue;
             }
 
-            match self.download_piece(&piece_info).await {
-                Ok(piece) => {
-                    // TODO: check piece integrity
-                    let mut sha1 = Sha1::new();
-                    sha1.update(&piece);
-                    let hash: PieceHash = sha1.finalize().try_into()?;
-                    if hash != piece_info.hash {
-                        return Result::Err(anyhow::anyhow!(
-                            "Failed integrity check for piece {}",
-                            piece_info.index
-                        ));
-                    }
-
-                    Message::Have(piece_info.index)
-                        .write(&mut self.stream)
-                        .await?;
-
-                    result_sender.send(PieceResult::new(piece_info.index, piece))?;
-                }
+            match self.download_piece(&piece_info).await.and_then(|piece| {
+                result_sender
+                    .send(PieceResult::new(piece_info.index, piece))
+                    .map_err(Into::into)
+            }) {
+                Ok(_) => {}
                 Err(error) => {
                     // If we failed to download a piece, put the piece info back into the queue and
                     // disconnect from this peer
@@ -219,6 +206,20 @@ impl TorrentDownloadWorker {
                 _ => {}
             }
         }
+
+        let mut sha1 = Sha1::new();
+        sha1.update(&progress.buf);
+        let hash: PieceHash = sha1.finalize().try_into()?;
+        if hash != piece_info.hash {
+            return Result::Err(anyhow::anyhow!(
+                "Failed integrity check for piece {}",
+                piece_info.index
+            ));
+        }
+
+        Message::Have(piece_info.index)
+            .write(&mut self.stream)
+            .await?;
 
         Result::Ok(progress.buf)
     }
