@@ -1,4 +1,4 @@
-use std::{net::Ipv4Addr, time::Duration};
+use std::net::Ipv4Addr;
 
 use crate::{
     torrent::Torrent,
@@ -10,7 +10,6 @@ use super::Peer;
 use bytes::{Buf, BufMut, BytesMut};
 use rand::Rng;
 use tokio::net::UdpSocket;
-use tracing::info;
 use url::Url;
 
 const BUFFER_SIZE: usize = 1024;
@@ -193,6 +192,8 @@ impl UdpTrackerConnection {
         Result::Ok(buf)
     }
 
+    // TODO: To be used once timeouts and retransmission is implemented
+    #[allow(dead_code)]
     fn timeout(&self) -> u64 {
         15 * 2u64.pow(self.backoff)
     }
