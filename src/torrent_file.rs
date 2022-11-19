@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde_bytes::ByteBuf;
 use serde_derive::{Deserialize, Serialize};
