@@ -8,20 +8,23 @@ mod writer;
 
 use std::path::Path;
 
+use clap::{command, Parser};
 use client::TorrentClient;
 use torrent_file::TorrentMetaInfo;
+
+#[derive(Debug, Parser)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    filename: String,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
-    let client = TorrentClient::new(6881);
-    // TODO: better arg handling
-    let filename = std::env::args()
-        .skip(1)
-        .next()
-        .ok_or_else(|| anyhow::anyhow!("Invalid args"))?;
+    let args = Args::parse();
 
-    let torrent_file = TorrentMetaInfo::from_file(Path::new(&filename))?;
+    let client = TorrentClient::new(6881);
+    let torrent_file = TorrentMetaInfo::from_file(Path::new(&args.filename))?;
     client.download_file(torrent_file).await
 }

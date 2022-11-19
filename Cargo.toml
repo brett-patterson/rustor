@@ -2,6 +2,7 @@
 name = "rustor"
 version = "0.1.0"
 edition = "2021"
+description = "A simple BitTorrent client"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,6 +10,7 @@ edition = "2021"
 anyhow = "1.0.66"
 async-channel = "1.7.1"
 bytes = "1.2.1"
+clap = { version = "4.0.26", features = ["derive", "cargo"] }
 indicatif = "0.17.2"
 rand = "0.8.5"
 reqwest = "0.11.12"
