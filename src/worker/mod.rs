@@ -22,6 +22,7 @@ use crate::{
 const MAX_BLOCK_SIZE: u32 = 16384;
 
 // The max number of unfulfilled requests a worker can have in flight at one time
+// TODO: Adaptive queueing of requests: https://luminarys.com/posts/writing-a-bittorrent-client.html
 const MAX_BACKLOG: u32 = 5;
 
 #[derive(Debug)]

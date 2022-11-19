@@ -47,6 +47,7 @@ impl TorrentClient {
             .collect();
 
         // Send out each piece of the file to workers
+        // TODO: Better piece picking algorithm: https://luminarys.com/posts/writing-a-bittorrent-client.html
         for i in 0..torrent.piece_hashes.len() {
             let begin = i as u64 * torrent.piece_length;
             let end = u64::min((i + 1) as u64 * torrent.piece_length, torrent.length);
