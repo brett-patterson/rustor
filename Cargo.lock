@@ -755,6 +755,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-channel",
+ "bytes",
  "indicatif",
  "rand",
  "reqwest",
@@ -766,6 +767,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "urlencoding",
 ]
 

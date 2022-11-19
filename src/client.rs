@@ -9,10 +9,11 @@ use tokio::task::JoinHandle;
 use tracing::{error, info, warn};
 
 use crate::torrent::Torrent;
-use crate::torrent_file::TorrentFile;
+use crate::torrent_file::TorrentMetaInfo;
 use crate::tracker::get_peers;
 use crate::types::{PeerID, PEER_ID_LEN};
 use crate::worker::{PieceInfo, PieceResult, TorrentDownloadWorker};
+use crate::writer::TorrentWriter;
 
 pub struct TorrentClient {
     peer_id: PeerID,
@@ -26,7 +27,7 @@ impl TorrentClient {
         Self { peer_id, port }
     }
 
-    pub async fn download_file(&self, torrent_file: TorrentFile) -> anyhow::Result<()> {
+    pub async fn download_file(&self, torrent_file: TorrentMetaInfo) -> anyhow::Result<()> {
         let torrent = Torrent::try_from(torrent_file)?;
         let peers = get_peers(&self.peer_id, self.port, &torrent).await?;
 
@@ -63,6 +64,8 @@ impl TorrentClient {
             let piece_info = PieceInfo::new(i as u32, torrent.piece_hashes[i], length as u32);
             download_sender.send(piece_info).await?;
         }
+
+        let mut writer = TorrentWriter::from_torrent(&torrent).await?;
 
         let mut bytes_written = 0u64;
         while let Some(piece_result) = result_receiver.recv().await {

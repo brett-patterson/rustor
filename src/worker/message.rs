@@ -41,6 +41,8 @@ pub enum Message {
     Piece(u32, u32, Vec<u8>),
 }
 
+// TODO: Can we make read/write more efficient here with bytes crate?
+
 impl Message {
     pub async fn read<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Self> {
         let len = reader.read_u32().await?;

@@ -1,32 +1,15 @@
-use std::{fmt::Display, net::Ipv4Addr};
+use std::net::Ipv4Addr;
 
 use serde_bytes::ByteBuf;
 use serde_derive::Deserialize;
 
 use crate::{torrent::Torrent, types::PeerID};
 
+use super::Peer;
+
 #[derive(Debug, Deserialize)]
 struct TrackerResponse {
     peers: ByteBuf,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct Peer {
-    pub ip: Ipv4Addr,
-    pub port: u16,
-}
-
-impl Display for Peer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}:{}", self.ip, self.port))?;
-        Result::Ok(())
-    }
-}
-
-impl Peer {
-    fn new(ip: Ipv4Addr, port: u16) -> Self {
-        Peer { ip, port }
-    }
 }
 
 pub async fn get_peers(

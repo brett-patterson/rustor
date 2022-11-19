@@ -4,11 +4,12 @@ mod torrent_file;
 mod tracker;
 mod types;
 mod worker;
+mod writer;
 
 use std::path::Path;
 
 use client::TorrentClient;
-use torrent_file::TorrentFile;
+use torrent_file::TorrentMetaInfo;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -21,6 +22,6 @@ async fn main() -> anyhow::Result<()> {
         .next()
         .ok_or_else(|| anyhow::anyhow!("Invalid args"))?;
 
-    let torrent_file = TorrentFile::from_file(Path::new(&filename))?;
+    let torrent_file = TorrentMetaInfo::from_file(Path::new(&filename))?;
     client.download_file(torrent_file).await
 }
