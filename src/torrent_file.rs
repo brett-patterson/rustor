@@ -43,13 +43,13 @@ impl TorrentMetaInfo {
     }
 
     pub fn piece_hashes(&self) -> anyhow::Result<Vec<PieceHash>> {
-        let n = self.info.pieces.len() / PIECE_HASH_LEN;
-        let mut hashes = vec![[0u8; PIECE_HASH_LEN]; n];
-
-        for i in 0..n {
-            hashes[i]
-                .copy_from_slice(&self.info.pieces[i * PIECE_HASH_LEN..(i + 1) * PIECE_HASH_LEN]);
-        }
+        let hashes: Vec<PieceHash> = self
+            .info
+            .pieces
+            .chunks_exact(PIECE_HASH_LEN)
+            .map(|chunk| TryInto::<PieceHash>::try_into(chunk))
+            .filter_map(|chunk_result| chunk_result.ok())
+            .collect();
 
         Result::Ok(hashes)
     }
