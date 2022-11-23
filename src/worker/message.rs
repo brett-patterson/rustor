@@ -1,3 +1,4 @@
+use bytes::{Buf, BufMut, BytesMut};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const MESSAGE_ID_CHOKE: u8 = 0;
@@ -41,8 +42,6 @@ pub enum Message {
     Piece(u32, u32, Vec<u8>),
 }
 
-// TODO: Can we make read/write more efficient here with bytes crate?
-
 impl Message {
     pub async fn read<R: AsyncReadExt + Unpin>(reader: &mut R) -> anyhow::Result<Self> {
         let len = reader.read_u32().await?;
@@ -50,10 +49,10 @@ impl Message {
             return Result::Ok(Self::KeepAlive);
         }
 
-        let mut payload = vec![0u8; len as usize];
+        let mut payload = BytesMut::zeroed(len as usize);
         reader.read_exact(&mut payload).await?;
 
-        let id = payload[0];
+        let id = payload.get_u8();
 
         match id {
             MESSAGE_ID_CHOKE => Result::Ok(Self::Choke),
@@ -61,31 +60,31 @@ impl Message {
             MESSAGE_ID_INTERESTED => Result::Ok(Self::Interested),
             MESSAGE_ID_NOT_INTERESTED => Result::Ok(Self::NotInterested),
             MESSAGE_ID_BITFIELD => {
-                let mut bitfield = vec![0u8; payload.len() - 1];
-                bitfield[..].copy_from_slice(&payload[1..]);
+                let mut bitfield = vec![0u8; payload.remaining()];
+                payload.copy_to_slice(&mut bitfield);
                 Result::Ok(Self::Bitfield(Bitfield(bitfield)))
             }
             MESSAGE_ID_HAVE => {
-                let index = u32::from_be_bytes(payload[1..5].try_into()?);
+                let index = payload.get_u32();
                 Result::Ok(Self::Have(index))
             }
             MESSAGE_ID_REQUEST => {
-                let index = u32::from_be_bytes(payload[1..5].try_into()?);
-                let begin = u32::from_be_bytes(payload[5..9].try_into()?);
-                let length = u32::from_be_bytes(payload[9..13].try_into()?);
+                let index = payload.get_u32();
+                let begin = payload.get_u32();
+                let length = payload.get_u32();
                 Result::Ok(Self::Request(index, begin, length))
             }
             MESSAGE_ID_CANCEL => {
-                let index = u32::from_be_bytes(payload[1..5].try_into()?);
-                let begin = u32::from_be_bytes(payload[5..9].try_into()?);
-                let length = u32::from_be_bytes(payload[9..13].try_into()?);
+                let index = payload.get_u32();
+                let begin = payload.get_u32();
+                let length = payload.get_u32();
                 Result::Ok(Self::Cancel(index, begin, length))
             }
             MESSAGE_ID_PIECE => {
-                let index = u32::from_be_bytes(payload[1..5].try_into()?);
-                let begin = u32::from_be_bytes(payload[5..9].try_into()?);
-                let mut block = vec![0u8; payload.len() - 1 - 8];
-                block[..].copy_from_slice(&payload[9..]);
+                let index = payload.get_u32();
+                let begin = payload.get_u32();
+                let mut block = vec![0u8; payload.remaining()];
+                payload.copy_to_slice(&mut block);
                 Result::Ok(Self::Piece(index, begin, block))
             }
             _ => Result::Err(anyhow::anyhow!("Unknown message ID: {}", id)),
@@ -93,73 +92,71 @@ impl Message {
     }
 
     pub async fn write<W: AsyncWriteExt + Unpin>(&self, writer: &mut W) -> anyhow::Result<()> {
-        let buf: Vec<u8> = match self {
-            Self::KeepAlive => {
-                vec![0u8; 1]
-            }
+        let buf: BytesMut = match self {
+            Self::KeepAlive => BytesMut::zeroed(1),
             Self::Choke => {
-                let mut buf = vec![0u8; 4 + 1];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1));
-                buf[4] = MESSAGE_ID_CHOKE;
+                let mut buf = BytesMut::with_capacity(4 + 1);
+                buf.put_u32(1);
+                buf.put_u8(MESSAGE_ID_CHOKE);
                 buf
             }
             Self::Unchoke => {
-                let mut buf = vec![0u8; 4 + 1];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1));
-                buf[4] = MESSAGE_ID_UNCHOKE;
+                let mut buf = BytesMut::with_capacity(4 + 1);
+                buf.put_u32(1);
+                buf.put_u8(MESSAGE_ID_UNCHOKE);
                 buf
             }
             Self::Interested => {
-                let mut buf = vec![0u8; 4 + 1];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1));
-                buf[4] = MESSAGE_ID_INTERESTED;
+                let mut buf = BytesMut::with_capacity(4 + 1);
+                buf.put_u32(1);
+                buf.put_u8(MESSAGE_ID_INTERESTED);
                 buf
             }
             Self::NotInterested => {
-                let mut buf = vec![0u8; 4 + 1];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1));
-                buf[4] = MESSAGE_ID_NOT_INTERESTED;
+                let mut buf = BytesMut::with_capacity(4 + 1);
+                buf.put_u32(1);
+                buf.put_u8(MESSAGE_ID_NOT_INTERESTED);
                 buf
             }
             Self::Bitfield(bitfield) => {
-                let mut buf = vec![0u8; 4 + 1 + bitfield.0.len()];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1 + bitfield.0.len() as u32));
-                buf[4] = MESSAGE_ID_BITFIELD;
-                buf[5..].copy_from_slice(&bitfield.0);
+                let mut buf = BytesMut::with_capacity(4 + 1 + bitfield.0.len());
+                buf.put_u32(1 + bitfield.0.len() as u32);
+                buf.put_u8(MESSAGE_ID_BITFIELD);
+                buf.put_slice(&bitfield.0);
                 buf
             }
             Self::Have(index) => {
-                let mut buf = vec![0u8; 4 + 1 + 4];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1 + 4));
-                buf[4] = MESSAGE_ID_HAVE;
-                buf[5..].copy_from_slice(&index.to_be_bytes());
+                let mut buf = BytesMut::with_capacity(4 + 1 + 4);
+                buf.put_u32(1 + 4);
+                buf.put_u8(MESSAGE_ID_HAVE);
+                buf.put_u32(*index);
                 buf
             }
             Self::Request(index, begin, length) => {
-                let mut buf = vec![0u8; 4 + 1 + 4 + 4 + 4];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1 + 4 + 4 + 4));
-                buf[4] = MESSAGE_ID_REQUEST;
-                buf[5..9].copy_from_slice(&index.to_be_bytes());
-                buf[9..13].copy_from_slice(&begin.to_be_bytes());
-                buf[13..17].copy_from_slice(&length.to_be_bytes());
+                let mut buf = BytesMut::with_capacity(4 + 1 + 4 + 4 + 4);
+                buf.put_u32(1 + 4 + 4 + 4);
+                buf.put_u8(MESSAGE_ID_REQUEST);
+                buf.put_u32(*index);
+                buf.put_u32(*begin);
+                buf.put_u32(*length);
                 buf
             }
             Self::Cancel(index, begin, length) => {
-                let mut buf = vec![0u8; 4 + 1 + 4 + 4 + 4];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1 + 4 + 4 + 4));
-                buf[4] = MESSAGE_ID_CANCEL;
-                buf[5..9].copy_from_slice(&index.to_be_bytes());
-                buf[9..13].copy_from_slice(&begin.to_be_bytes());
-                buf[13..17].copy_from_slice(&length.to_be_bytes());
+                let mut buf = BytesMut::with_capacity(4 + 1 + 4 + 4 + 4);
+                buf.put_u32(1 + 4 + 4 + 4);
+                buf.put_u8(MESSAGE_ID_CANCEL);
+                buf.put_u32(*index);
+                buf.put_u32(*begin);
+                buf.put_u32(*length);
                 buf
             }
             Self::Piece(index, begin, block) => {
-                let mut buf = vec![0u8; 4 + 1 + 4 + 4 + block.len()];
-                buf[0..4].copy_from_slice(&u32::to_be_bytes(1 + 4 + 4 + block.len() as u32));
-                buf[4] = MESSAGE_ID_PIECE;
-                buf[5..9].copy_from_slice(&index.to_be_bytes());
-                buf[9..13].copy_from_slice(&begin.to_be_bytes());
-                buf[13..].copy_from_slice(&block);
+                let mut buf = BytesMut::with_capacity(4 + 1 + 4 + 4 + block.len());
+                buf.put_u32(1 + 4 + 4 + block.len() as u32);
+                buf.put_u8(MESSAGE_ID_PIECE);
+                buf.put_u32(*index);
+                buf.put_u32(*begin);
+                buf.put_slice(block);
                 buf
             }
         };
