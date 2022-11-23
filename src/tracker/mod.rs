@@ -31,6 +31,7 @@ pub async fn get_peers(
     port: u16,
     torrent: &Torrent,
 ) -> anyhow::Result<Vec<Peer>> {
+    // TODO: Support announce list
     let url = Url::parse(&torrent.announce)?;
     match url.scheme() {
         "http" | "https" => http::get_peers(peer_id, port, torrent).await,
